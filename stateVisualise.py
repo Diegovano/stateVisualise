@@ -5,21 +5,111 @@ import math
 import itertools
 from matplotlib.widgets import Button
 
-colour_map = {
+def check_state_possible(phase_string: str):
+  assert len(phase_string) == 12
+  ANS, AEW, ASN, AWE, RSE, REN, RNW, RWS, LSW, LES, LNE, LWN = map(lambda c: True if c == 'G' else False, phase_string)
+
+  if (ANS and AEW or ANS and AWE or ASN and AEW or ASN and AWE):
+    return False
+
+  return True
+
+class stateViewer:
+  def __init__(self, combinations, isValid, G, pos, colourMap, rows, cols):
+    self.combinations = combinations
+    self.isValid = isValid
+    self.G = G
+    self.pos = pos
+    self.colourMap = colourMap
+    self.rows = rows
+    self.cols = cols
+    self.perPage = rows * cols
+    self.currentPage = 0
+
+    self.fig = plt.figure(figsize=(16, 9))
+    self._setup_buttons()
+    self.draw_page(0)
+
+  def nextPage(self, event):
+    if (self.currentPage + 1) * self.perPage < len(combinations):
+      self.currentPage += 1
+      self.draw_page(self.currentPage)
+
+  def prevPage(self, event):
+    if self.currentPage > 0:
+      self.currentPage -= 1
+      self.draw_page(self.currentPage)
+
+  def _setup_buttons(self):
+    self.axnext = plt.axes([0.55, 0.03, 0.1, 0.05])
+    self.axprev = plt.axes([0.35, 0.03, 0.1, 0.05])
+
+    self.bnext = Button(self.axnext, 'Next')
+    self.bprev = Button(self.axprev, 'Previous')
+    self.bnext.on_clicked(self.nextPage)
+    self.bprev.on_clicked(self.prevPage)
+
+  def _draw_phase(self, phase_string, ax):
+    colours = [self.colourMap[c] for c in phase_string]
+
+    # print(pos)
+    nx.draw_networkx_nodes(self.G, self.pos, ax=ax, node_size=20, node_color='lightgray')
+    nx.draw_networkx_labels(self.G, self.pos, ax=ax, font_size=8)
+    nx.draw_networkx_edges(self.G, self.pos, edgelist=aheadEdges, edge_color=colours[:len(aheadEdges)], width=2, arrows=True, ax=ax)
+    nx.draw_networkx_edges(self.G, self.pos, edgelist=rightEdges, edge_color=colours[len(aheadEdges):len(aheadEdges) + len(rightEdges)], connectionstyle=f'arc3,rad=-0.4', width=2, arrows=True, ax=ax)
+    nx.draw_networkx_edges(self.G, self.pos, edgelist=leftEdges, edge_color=colours[-len(leftEdges):], connectionstyle=f'arc3,rad=0.4', width=2, arrows=True, ax=ax)
+
+    return
+
+  def draw_page(self, page):
+    gs = gridspec.GridSpec(self.rows, self.cols, figure=self.fig)
+    start = page * self.perPage
+    end = min(start + self.perPage, len(self.combinations))
+
+    # Remove old plot axes (axes that are used for previous page)
+    for ax in [a for a in self.fig.get_axes() if a.get_title() != '']:
+      ax.remove()
+
+    for i, idx in enumerate(range(start, end)):
+      thisState = self.combinations[idx]
+
+      ax = self.fig.add_subplot(gs[i]) 
+      ax.set_axis_off()
+
+      self._draw_phase(thisState[1], ax)
+
+      ax.set_title(f"#{thisState[0]}: {thisState[1]}")
+      ax.title.set_fontsize(10)
+      if (check_state_possible(thisState[1])):
+        ax.title.set_color('green')
+      else:
+        ax.title.set_color('red')
+    
+    self.fig.suptitle(f"Page {page + 1} / {len(self.combinations) // self.perPage}\nTotal {len(self.combinations)} {'valid' if self.isValid else 'invalid'} combinations")
+    self.fig.subplots_adjust(bottom=0.15)
+    self.fig.canvas.draw_idle()
+
+colourMap = {
   'r': 'red',
+  # 'y': 'yellow',
   # 'g': 'green',
-  'G': 'lime',
-  # 'y': 'yellow'
+  'G': 'lime'
 }
 
-combinations = list(map(''.join, itertools.product(colour_map.keys(), repeat=12)))
+combinations = list(map(''.join, itertools.product(colourMap.keys(), repeat=12)))
 
-# Settings
-per_page = 50
-rows, cols = 5, 10
-current_page = [0]  # Mutable for closure access
+validCombinations: list[tuple[int, str]] = []
+invalidCombinations: list[tuple[int, str]] = []
 
+for i in range(len(combinations)):
+  if check_state_possible(combinations[i]):
+    validCombinations.append((i, combinations[i]))
+  else:
+    invalidCombinations.append((i, combinations[i]))
 
+print(f"Total {len(combinations)} combinations, of which {len(validCombinations)} valid ({100 * len(validCombinations) / len(combinations)} %)")
+
+# Generate the intersection shape
 G = nx.DiGraph()
 
 intersectionArmPositions = {'N': (0, 1), 'E': (1, 0), 'S': (0, -1), 'W': (-1, 0)}
@@ -49,76 +139,9 @@ for (armName, armBasePos) in intersectionArmPositions.items():
   rightEdges = [('S0', 'E2'), ('E0', 'N2'), ('N0', 'W2'), ('W0', 'S2')]
   leftEdges = [('S1', 'W2'), ('E1', 'S2'), ('N1', 'E2'), ('W1', 'N2')]
 
+commonKwargs = {'G': G, 'pos': pos, 'colourMap': colourMap, 'rows': 5, 'cols': 10}
 
-def draw_phase(phase_string, ax):
-  colours = [colour_map[c] for c in phase_string]
-
-  # print(pos)
-  nx.draw_networkx_nodes(G, pos, ax=ax, node_size=20, node_color='lightgray')
-  nx.draw_networkx_labels(G, pos, ax=ax, font_size=8)
-  nx.draw_networkx_edges(G, pos, edgelist=aheadEdges, edge_color=colours[:len(aheadEdges)], width=2, arrows=True, ax=ax)
-  nx.draw_networkx_edges(G, pos, edgelist=rightEdges, edge_color=colours[len(aheadEdges):len(aheadEdges) + len(rightEdges)], connectionstyle=f'arc3,rad=-0.4', width=2, arrows=True, ax=ax)
-  nx.draw_networkx_edges(G, pos, edgelist=leftEdges, edge_color=colours[-len(leftEdges):], connectionstyle=f'arc3,rad=0.4', width=2, arrows=True, ax=ax)
-
-  return
-
-
-def draw_page(page):
-  # fig.clf()
-  gs = gridspec.GridSpec(rows, cols, figure=fig)
-  start = page * per_page
-  end = min(start + per_page, len(combinations))
-
-  # Remove old plot axes (axes that are used for previous page)
-  for ax in [a for a in fig.get_axes() if a.get_title() != '']:
-    ax.remove()
-
-  for i, idx in enumerate(range(start, end)):
-    thisState = combinations[idx]
-
-    ax = fig.add_subplot(gs[i])
-    ax.set_axis_off()
-
-    draw_phase(thisState, ax)
-
-    ax.set_title(f"#{idx}: {thisState}")
-    ax.title.set_fontsize(10)
-  
-  fig.suptitle(f"Page {page + 1} / {len(combinations) // per_page}\nTotal {len(combinations)} combinations")
-  fig.subplots_adjust(bottom=0.15)
-  fig.canvas.draw_idle()
-
-
-# Button callbacks
-def next_page(event):
-  if (current_page[0] + 1) * per_page < len(combinations):
-    current_page[0] += 1
-    draw_page(current_page[0])
-
-def prev_page(event):
-  if current_page[0] > 0:
-    current_page[0] -= 1
-    draw_page(current_page[0])
-
-def redraw_buttons():
-  # Add Buttons (they get re-created each time the page is drawn)
-  axnext = plt.axes([0.55, 0.03, 0.1, 0.05])
-  axprev = plt.axes([0.35, 0.03, 0.1, 0.05])
-
-  bnext = Button(axnext, 'Next')
-  bprev = Button(axprev, 'Previous')
-  bnext.on_clicked(next_page)
-  bprev.on_clicked(prev_page)
-
-# Create initial figure
-fig = plt.figure(figsize=(16, 9))
-draw_page(0)
-axnext = plt.axes([0.55, 0.03, 0.1, 0.05])
-axprev = plt.axes([0.35, 0.03, 0.1, 0.05])
-
-bnext = Button(axnext, 'Next')
-bprev = Button(axprev, 'Previous')
-bnext.on_clicked(next_page)
-bprev.on_clicked(prev_page)
+validViewer = stateViewer(combinations=validCombinations, isValid=True, **commonKwargs)
+invalidViewer = stateViewer(combinations=invalidCombinations, isValid=False, **commonKwargs)
 
 plt.show()
