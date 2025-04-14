@@ -8,9 +8,49 @@ from matplotlib.widgets import Button
 def check_state_possible(phase_string: str):
   assert len(phase_string) == 12
   ANS, AEW, ASN, AWE, RSE, REN, RNW, RWS, LSW, LES, LNE, LWN = map(lambda c: True if c == 'G' else False, phase_string)
+  mANS, mAEW, mASN, mAWE, mRSE, mREN, mRNW, mRWS, mLSW, mLES, mLNE, mLWN = map(lambda c: True if c == 'g' else False, phase_string)
 
   if (ANS and AEW or ANS and AWE or ASN and AEW or ASN and AWE):
+    # conflicing aheads
     return False
+
+  if (LSW and LES or LES and LNE or LNE and LWN or LWN and LSW):
+    # conflicting lefts
+    return False
+
+  if (LSW and AWE or LWN and ANS or LNE and AEW or LES and ASN):
+    # conflicing aheads and lefts
+    return False
+
+  if (LNE and ASN or LES and AWE or LSW and ANS or LWN and AEW):
+    # conflicing lefts with opposite direction aheads
+    return False
+
+  if (ANS + RNW == 1 or AEW + REN == 1 or ASN + RSE == 1 or AWE + RWS == 1):
+    # right turn and ahead phase need to be the same because they share a lane
+    return False
+
+  if (ANS + RWS + LES > 1 or AEW + RNW + LSW > 1 or ASN + REN + LWN > 1 or AWE + RSE + LNE > 1):
+    # multiple 'G's on one arrival lane
+    return False
+
+  # MINOR GREENS
+  if (mANS or mAEW or mASN or mAWE):
+    # I have only seen minor aheads for cycles
+    return False
+  
+  if (mLNE and not ASN or mLES and not AWE or mLSW and not ANS or mLWN and not AEW):
+    # If there is no oncoming green, then lefts should be major green
+    return False
+
+  if (mRNW and not ANS or mREN and not AEW or mRSE and not ASN or mRWS and not AWE):
+    # right turn and ahead phase need to be green at the same time because they share a lane.
+    return False
+
+  if (mLNE and not ANS or mLES and not AEW or mLSW and not ASN or mLWN and not AWE):
+    # The left cannot be minor if the major ahead is not active, this is because 
+    # minor lefts happen when the signal is a standard green (vs an arrow)
+    return False 
 
   return True
 
@@ -31,7 +71,7 @@ class stateViewer:
     self.draw_page(0)
 
   def nextPage(self, event):
-    if (self.currentPage + 1) * self.perPage < len(combinations):
+    if (self.currentPage + 1) * self.perPage < len(self.combinations):
       self.currentPage += 1
       self.draw_page(self.currentPage)
 
@@ -79,20 +119,20 @@ class stateViewer:
       self._draw_phase(thisState[1], ax)
 
       ax.set_title(f"#{thisState[0]}: {thisState[1]}")
-      ax.title.set_fontsize(10)
+      ax.title.set_fontsize(8)
       if (check_state_possible(thisState[1])):
         ax.title.set_color('green')
       else:
         ax.title.set_color('red')
     
-    self.fig.suptitle(f"Page {page + 1} / {len(self.combinations) // self.perPage}\nTotal {len(self.combinations)} {'valid' if self.isValid else 'invalid'} combinations")
+    self.fig.suptitle(f"Page {page + 1} / {len(self.combinations) // self.perPage + 1}\nTotal {len(self.combinations)} {'valid' if self.isValid else 'invalid'} combinations")
     self.fig.subplots_adjust(bottom=0.15)
     self.fig.canvas.draw_idle()
 
 colourMap = {
   'r': 'red',
   # 'y': 'yellow',
-  # 'g': 'green',
+  'g': 'green',
   'G': 'lime'
 }
 
